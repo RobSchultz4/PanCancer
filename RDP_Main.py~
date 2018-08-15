@@ -106,8 +106,8 @@ print(repOut)
 ### Replicate TF and Bicluster Correlation
 ###
 ####################################################################################################################
-get columns from post process
-split
+#get columns from post process
+#split
 
 accpp=pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/postProcessed_vSurv/postProcessed_ACC_pita.csv', header=0, index_col=0)
 tfcols=['Up.MEME Motif1 Correlated Matches_ACC', 'Up.MEME Motif2 Correlated Matches_ACC','Up.WEEDER Motif1 Correlated Matches_ACC','Up.WEEDER Motif2 Correlated Matches_ACC','TFBS_DB.Correlated Matches_ACC']

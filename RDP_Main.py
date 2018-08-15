@@ -84,17 +84,28 @@ for k in np.arange(0,iters):
         #pverandoS=pd.Series(np.array(pverando))
         #pverandoS.columns= 'bic' +str(k)     
         #pverandoDF=pd.concat([pverandoDF,pverandoS], axis=1, sort=False)
+        if any( not np.isnan(p1['OS.STATUS'])) and any( not np.isnan(p1['OS.TIME'])) or any( not np.isnan(p1['PFS.STATUS'])) and any( not np.isnan(p1['PFS.TIME'])):
+            #psuedo code
+            survival stuff
+            survcomps.append(Survivalinfo)
+            if there is age information do:
+                Age stuff
+                survcomps.append(ageinfo)
+                if there is sex information do:
+                    Sex Stuff
+                    survcomps.append(sexinfo)
+                    runcph(survcomps)
     else:
         p1ve.append(np.NaN)
         av_ve.append(np.NaN)
         #pverando.append(np.NaN)
         p1pp.append(np.NaN)
 #p1pp is the probability of a random variance explained (pve[2:len(pve)) being larger than pc1 (pve[0])
-p1ve=pd.Series(p1ve, index=range(1,iters+1))
-av_ve=pd.Series(av_ve, index=range(1,iters+1))
-p1pp=pd.Series(p1pp, index=range(1,iters+1))
+p1ve = pd.Series(p1ve, index=range(1,iters+1))
+av_ve = pd.Series(av_ve, index=range(1,iters+1))
+p1pp = pd.Series(p1pp, index=range(1,iters+1))
 
-repOut=pd.DataFrame([nrows, orows, p1ve, av_ve, p1pp],  index=outNames[:5]) #, sur, surp, sur_age, surp_age, sur_agesex, surp_agesex,columns=outNames)
+repOut = pd.DataFrame([nrows, orows, p1ve, av_ve, p1pp],  index=outNames[:5]) #, sur, surp, sur_age, surp_age, sur_agesex, surp_agesex,columns=outNames)
 
 
 print(repOut)
@@ -109,22 +120,22 @@ print(repOut)
 #get columns from post process
 #split
 
-accpp=pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/postProcessed_vSurv/postProcessed_ACC_pita.csv', header=0, index_col=0)
-tfcols=['Up.MEME Motif1 Correlated Matches_ACC', 'Up.MEME Motif2 Correlated Matches_ACC','Up.WEEDER Motif1 Correlated Matches_ACC','Up.WEEDER Motif2 Correlated Matches_ACC','TFBS_DB.Correlated Matches_ACC']
+accpp = pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/postProcessed_vSurv/postProcessed_ACC_pita.csv', header=0, index_col=0)
+tfcols = ['Up.MEME Motif1 Correlated Matches_ACC', 'Up.MEME Motif2 Correlated Matches_ACC','Up.WEEDER Motif1 Correlated Matches_ACC','Up.WEEDER Motif2 Correlated Matches_ACC','TFBS_DB.Correlated Matches_ACC']
 
 def tfsplit(string):
     if isinstance(string,str):
-        list1=string.split(sep=' ')
-        list2=[i.split(sep=':') for i in list1]
+        list1 = string.split(sep = ' ')
+        list2 = [i.split(sep = ':') for i in list1]
     else:
-        list2=string
+        list2 = string
     return list2
 
 
 
 
 
-sigtfs=pd.DataFrame([accpp[i] for i in tfcols]).T
+sigtfs = pd.DataFrame([accpp[i] for i in tfcols]).T
 # Returns a DF with rows for each bicluster and columns for each Correlated matches
 # The contents are either nans for lists of lists. 
 # Each sublist contains three values. The first is the entrez gene number
@@ -133,6 +144,8 @@ sigtfs=pd.DataFrame([accpp[i] for i in tfcols]).T
 sigtfs[sigtfs.columns[1]].apply(lambda x: tfsplit(x))
 
 
+
+#Now what?
 
 
 
@@ -144,16 +157,11 @@ sigtfs[sigtfs.columns[1]].apply(lambda x: tfsplit(x))
 ###
 ####################################################################################################################
 
-if there is Survival information do:
-    Survival Stuff
-    survcomps.appenc(Survivalinfo)
-    if there is age information do:
-        Age stuff
-        survcomps.append(ageinfo)
-        if there is sex information do:
-            Sex Stuff
-            survcomps.append(sexinfo)
-    runcph(survcomps)
+
+
+
+
+
 
 
 
