@@ -5,7 +5,6 @@ import random
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from scipy.stats import pearsonr
-import math
 
 outdir = 'C:/Users/rschult4/Dropbox (ASU)/PanCancer/code/Replication Scripts/repOut'
 
