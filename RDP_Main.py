@@ -37,8 +37,9 @@ def runPCA(kints, df2):
 ####################################################################################################################
 
 # Read in genes for each cluster
-df1 = pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/code/Replication Scripts/postProcessed_ACC_pita.csv')
+df1 = pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/postProcessed_vSurv/postProcessed_ACC_pita.csv')
 # Bicluster is the index and lists of genes in the bicluster is the value
+df1.rename(columns={'Genes.1':'ENTREZ'}, inplace=True)
 biclustMembership = pd.DataFrame(df1["ENTREZ"].apply(lambda x: [int(i) for i in x.split()]))
 biclustMembership = biclustMembership.set_index(df1['Bicluster'])
 
@@ -69,7 +70,7 @@ av_ve = []
 p1pp = []
 pverandoDF = pd.DataFrame([])
 df2 = ratSec.T
-iters = 100 #len(intersection)
+iters = 1 #len(intersection)
 for k in np.arange(0,iters):
     kints = intersection[k+1]
     testEmrows = pd.Series([])
@@ -88,12 +89,12 @@ for k in np.arange(0,iters):
         #pverandoS=pd.Series(np.array(pverando))
         #pverandoS.columns= 'bic' +str(k)     
         #pverandoDF=pd.concat([pverandoDF,pverandoS], axis=1, sort=False)
-
-        #############################################################################################################
+        '''
+        #########################################################################################################
         ###
         ### Replicate survival
         ###
-        #############################################################################################################
+        #########################################################################################################
         # Run if there is any survival info availible
         if any(pd.isnull(p1['OS.STATUS']).apply(lambda x: not x)) and any(pd.isnull(p1['OS.STATUS']).apply(lambda x: not x)) or any(pd.isnull(p1['OS.STATUS']).apply(lambda x: not x)) and any(pd.isnull(p1['OS.STATUS']).apply(lambda x: not x)):
             # Run if the info availible is Overall Survival
@@ -121,10 +122,12 @@ for k in np.arange(0,iters):
             else:
                 print("No Survival for GSE: !!!")
         surv=[surv]
-##############################################################################################################################
-# End Survival
-##############################################################################################################################
-
+        #########################################################################################################
+        ###
+        ### End Survival
+        ###
+        #########################################################################################################
+        '''
     else:
         p1ve.append(np.NaN)
         av_ve.append(np.NaN)
