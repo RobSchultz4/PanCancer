@@ -267,7 +267,7 @@ psurp_agesex =  pd.Series(psurp_agesex, index=range(1,iters+1))
 
 repOut = pd.concat([nrows, orows, p1ve, av_ve, p1pp, osur, osurp, osur_age, osurp_age, osur_agesex, osurp_agesex, psur, psurp, psur_age, psurp_age, psur_agesex, psurp_agesex], axis=1)
 repOut.columns = outNames
-repOut.index = df1.index.values
+repOut.index = df1['Bicluster']
 
 #print(repOut)
 #repOut.to_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/Replication Scripts')

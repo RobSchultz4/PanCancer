@@ -1,0 +1,28 @@
+####################################################################################################################
+###
+### Replicate TF and Bicluster Correlation
+###
+####################################################################################################################
+#get columns from post process
+#split
+
+accpp = pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/postProcessed_vSurv/postProcessed_ACC_pita.csv', header=0, index_col=0)
+tfcols = ['Up.MEME Motif1 Correlated Matches_ACC', 'Up.MEME Motif2 Correlated Matches_ACC','Up.WEEDER Motif1 Correlated Matches_ACC','Up.WEEDER Motif2 Correlated Matches_ACC','TFBS_DB.Correlated Matches_ACC']
+
+def tfsplit(string):
+    if isinstance(string,str):
+        list1 = string.split(sep = ' ')
+        list2 = [i.split(sep = ':') for i in list1]
+    else:
+        list2 = string
+    return list2
+
+sigtfs = pd.DataFrame([accpp[i] for i in tfcols]).T
+# Returns a DF with rows for each bicluster and columns for each Correlated matches
+# The contents are either nans for lists of lists. 
+# Each sublist contains three values. The first is the entrez gene number
+# The seconds is the correlation coefficient
+# The third is the pvalue
+sigtfs[sigtfs.columns[1]].apply(lambda x: tfsplit(x))
+
+#Now what?
