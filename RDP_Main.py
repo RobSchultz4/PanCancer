@@ -30,6 +30,42 @@ def runPCA(kints, df2):
     return pca.explained_variance_ratio_[0], pcbic
 
 
+######################## Survival Functions:
+def runcph(coxdf, dur, eve):
+    cph = CoxPHFitter()
+    cph.fit(coxdf, duration_col = dur, event_col = eve, show_progress=True)  
+    return cph
+
+def isincluded(p1, colname):
+    return any(pd.isnull(p1[colname]).apply(lambda x: not x))
+
+def areValues(p1, colname):
+    return  pd.isnull(p1[colname]).apply(lambda x: not x)
+
+def makeMask(colname1,colname2):
+    mask=[True for i in  np.arange(0,len(p1[colname1]))]
+    mask1 = areValues(p1,colname1)
+    mask2 = areValues(p1,colname2)
+    for i in np.arange(0,len(p1[colname1])):
+        if mask1[i] == False:
+            mask[i] = False
+        elif mask2[i] == False:
+            mask[i] = False
+        else:
+            mask[i] = True 
+    return mask
+
+def handleNaNs(p1, colname1, colname2, coxdf):
+    if any(pd.isnull(p1[colname1])) or any(pd.isnull(p1[colname2])): 
+        mask = makeMask(colname1,colname2)
+        coxdf = coxdf[mask]
+        status = p1[colname2][mask]
+        time = p1[colname1][mask]
+    else:
+        time = p1[colname1]
+        status = p1[colname2]
+    return time, status, coxdf
+
 ####################################################################################################################
 ###
 ### Replicate Biclusters 
@@ -37,11 +73,10 @@ def runPCA(kints, df2):
 ####################################################################################################################
 
 # Read in genes for each cluster
-df1 = pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/postProcessed_vSurv/postProcessed_ACC_pita.csv')
+df1 = pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/postProcessed_vSurv/postProcessed_ACC_pita.csv',index_col=0)
 # Bicluster is the index and lists of genes in the bicluster is the value
 df1.rename(columns={'Genes.1':'ENTREZ'}, inplace=True)
 biclustMembership = pd.DataFrame(df1["ENTREZ"].apply(lambda x: [int(i) for i in x.split()]))
-biclustMembership = biclustMembership.set_index(df1['Bicluster'])
 
 #Read in a second dataset (REPLICATION DATASET
 ratSec = pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/Reconstructed exprs/GSE49278_exprs_entrez.csv',header=0, index_col=0)
@@ -60,17 +95,29 @@ for i in np.arange(1,biclustMembership.shape[0]+1):
 p1 = pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/Reconstructed pData/GSE49278_pData_recon.csv',header=0,index_col=0)
 
 ks = biclustMembership.shape[0]
-outNames = ['n.rows','overlap.rows','pc1.var.exp','avg.pc1.var.exp','pc1.perm.p','survival','survival.p','survival.age','survival.age.p','survival.age.sex','survival.age.sex.p']
+outNames = ['n.rows','overlap.rows','pc1.var.exp','avg.pc1.var.exp','pc1.perm.p','os.survival','os.survival.p','os.survival.age','os.survival.age.p','os.survival.age.sex','os.survival.age.sex.p','pfs.survival','pfs.survival.p','pfs.survival.age','pfs.survival.age.p','pfs.survival.age.sex','pfs.survival.age.sex.p']
 permutations = 100
-repOut = pd.DataFrame(columns=outNames)
-nrows = pd.Series(biclustMembership.ENTREZ.apply(lambda x: len(x)))
+nrows = pd.Series(df1['Genes'])
 orows = intersection.apply(lambda x: len(x))
 p1ve = []
 av_ve = []
 p1pp = []
 pverandoDF = pd.DataFrame([])
 df2 = ratSec.T
-iters = 1 #len(intersection)
+iters = 3 #len(intersection)
+osur =  []
+osurp =  []
+osur_age =  []
+osurp_age =  []
+osur_agesex =  []
+osurp_agesex =  []
+psur =  []
+psurp =  []
+psur_age =  []
+psurp_age =  []
+psur_agesex =  []
+psurp_agesex =  []
+
 for k in np.arange(0,iters):
     kints = intersection[k+1]
     testEmrows = pd.Series([])
@@ -89,59 +136,140 @@ for k in np.arange(0,iters):
         #pverandoS=pd.Series(np.array(pverando))
         #pverandoS.columns= 'bic' +str(k)     
         #pverandoDF=pd.concat([pverandoDF,pverandoS], axis=1, sort=False)
-        '''
-        #########################################################################################################
+
+        #####################################################################################################
         ###
-        ### Replicate survival
+        ### Replicate Survival
         ###
-        #########################################################################################################
+        #####################################################################################################
+
+        coxdfo = pd.DataFrame([])
+        coxdfp = pd.DataFrame([])
         # Run if there is any survival info availible
-        if any(pd.isnull(p1['OS.STATUS']).apply(lambda x: not x)) and any(pd.isnull(p1['OS.STATUS']).apply(lambda x: not x)) or any(pd.isnull(p1['OS.STATUS']).apply(lambda x: not x)) and any(pd.isnull(p1['OS.STATUS']).apply(lambda x: not x)):
+        if isincluded(p1, 'OS.STATUS') and isincluded(p1, 'OS.TIME') or isincluded(p1, 'PFS.STATUS') and isincluded(p1, 'PFS.TIME'):
+            coxdfo['Bic Expression'] = pcbic
+            coxdfp['Bic Expression'] = pcbic
             # Run if the info availible is Overall Survival
-            if any(pd.isnull(p1['OS.STATUS']).apply(lambda x: not x)) and any(pd.isnull(p1['OS.STATUS']).apply(lambda x: not x)):
-                coxdf.append(p1['OS.STATUS'])
-                coxdf.append(p1['OS.TIME'])
-                dur = 'OS.TIME'
-                eve = 'OS.STATUS' 
-                survdf=runcph(coxdf, dur, eve)
-            # If there is no Overall Survival, use Progression Free Survival
+            if isincluded(p1, 'OS.STATUS') and isincluded(p1, 'OS.TIME'):
+                time, status, coxdfo = handleNaNs(p1,'OS.TIME','OS.STATUS', coxdfo)
+                coxdfo['OS.STATUS'] = status
+                coxdfo['OS.TIME'] = time
+                survo = runcph(coxdfo, 'OS.TIME', 'OS.STATUS')
+                osur.append(survo.summary['z'])
+                osurp.append(survo.summary['p'].tolist()[0])
+                # Run if there is also age information
+                if isincluded(p1, 'AGE'):
+                    coxdfo['AGE'] = p1['AGE']
+                    survAo = runcph(coxdfo, 'OS.TIME', 'OS.STATUS')
+                    osur_age.append(survAo.summary['z'].tolist()[0])  
+                    osurp_age.append(survAo.summary['p'].tolist()[0]) 
+
+                    # Run if there is also sex information
+                    if isincluded(p1, 'SEX'):
+                        coxdfo['SEX'] = pd.get_dummies(p1['SEX'])['M'] # Male is 1 and female is 0
+                        survASo = runcph(coxdfo, 'OS.TIME', 'OS.STATUS')
+                        osur_agesex.append(survASo.summary['z'].tolist()[0])
+                        osurp_agesex.append(survASo.summary['p'].tolist()[0])
             else:
-                coxdf.append(p1['PFS.STATUS'])
-                coxdf.append(p1['PFS.TIME'])
-                dur = 'PFS.TIME'
-                eve = 'PFS.STATUS'
-                survdf=runcph(coxdf, dur, eve)
-            # Run if there is also age information
-            if any(pd.isnull(p1['AGE']).apply(lambda x: not x)):
-                coxdf.append(p1['AGE'])
-            survAdf=runcph(coxdf, dur, eve)
-            # Run if there is also sex information
-            if any(pd.isnull(p1['SEX']).apply(lambda x: not x)):
-                coxdf.append(pd.get_dummies(p1['SEX'])['M']) # Male is 1 and female is 0
-                survASdf=runcph(coxdf, dur, eve)
+                osur.append(np.NaN)
+                osurp.append(np.NaN)  
+                osur_age.append(np.NaN)  
+                osurp_age.append(np.NaN)  
+                osur_agesex.append(np.NaN)
+                osurp_agesex.append(np.NaN)
+            # Run if there is Progression Free Survival
+            if isincluded(p1, 'PFS.STATUS') and isincluded(p1, 'PFS.TIME'):
+                time, status, coxdfp = handleNaNs(p1,'PFS.TIME','PFS.STATUS', coxdfp)
+                coxdfp['PFS.STATUS'] = status
+                coxdfp['PFS.TIME'] = time 
+                survp = runcph(coxdfp, 'PFS.TIME', 'PFS.STATUS')
+                psur.append(survp.summary['z'].tolist()[0])   
+                psurp.append(survp.summary['p'].tolist()[0])
+                # Run if there is also age information
+                if isincluded(p1, 'AGE'):
+                    coxdfp['AGE'] = p1['AGE']
+                    survAp = runcph(coxdfp, 'PFS.TIME', 'PFS.STATUS')
+                    psur_age.append(survAp.summary['z'].tolist()[0])
+                    psurp_age.append(survAp.summary['p'].tolist()[0])
+                    # Run if there is also sex information
+                    if isincluded(p1, 'SEX'):
+                        coxdfp['SEX'] = pd.get_dummies(p1['SEX'])['M'] # Male is 1 and female is 0
+                        survASp = runcph(coxdfp, 'PFS.TIME', 'PFS.STATUS')
+                        psur_agesex.append(survASp.summary['z'].tolist()[0])
+                        psurp_agesex.append(survASp.summary['p'].tolist()[0])
             else:
-                print("No Survival for GSE: !!!")
-        surv=[surv]
-        #########################################################################################################
+                psur.append(np.NaN)
+                psurp.append(np.NaN)
+                psur_age.append(np.NaN)
+                psurp_age.append(np.NaN)
+                psur_agesex.append(np.NaN)
+                psurp_agesex.append(np.NaN)
+
+        else:
+            osur.append(np.NaN)
+            osurp.append(np.NaN)  
+            osur_age.append(np.NaN)  
+            osurp_age.append(np.NaN)  
+            osur_agesex.append(np.NaN)
+            osurp_agesex.append(np.NaN)
+            psur.append(np.NaN)
+            psurp.append(np.NaN)
+            psur_age.append(np.NaN)
+            psurp_age.append(np.NaN)
+            psur_agesex.append(np.NaN)
+            psurp_agesex.append(np.NaN)
+        #####################################################################################################
         ###
         ### End Survival
         ###
-        #########################################################################################################
-        '''
+        #####################################################################################################
+
     else:
         p1ve.append(np.NaN)
         av_ve.append(np.NaN)
         #pverando.append(np.NaN)
         p1pp.append(np.NaN)
+        osur.append(np.NaN)
+        osurp.append(np.NaN)  
+        osur_age.append(np.NaN)  
+        osurp_age.append(np.NaN)  
+        osur_agesex.append(np.NaN)
+        osurp_agesex.append(np.NaN)
+        psur.append(np.NaN)
+        psurp.append(np.NaN)
+        psur_age.append(np.NaN)
+        psurp_age.append(np.NaN)
+        psur_agesex.append(np.NaN)
+        psurp_agesex.append(np.NaN)
+
 #p1pp is the probability of a random variance explained (pve[2:len(pve)) being larger than pc1 (pve[0])
 p1ve = pd.Series(p1ve, index=range(1,iters+1))
 av_ve = pd.Series(av_ve, index=range(1,iters+1))
 p1pp = pd.Series(p1pp, index=range(1,iters+1))
 
-repOut = pd.DataFrame([nrows, orows, p1ve, av_ve, p1pp],  index=outNames[:5]) #, sur, surp, sur_age, surp_age, sur_agesex, surp_agesex,columns=outNames)
+osur = pd.Series(osur, index=range(1,iters+1))
+osurp =  pd.Series(osurp, index=range(1,iters+1))
+osur_age =  pd.Series(osur_age, index=range(1,iters+1))
+osurp_age =  pd.Series(osurp_age, index=range(1,iters+1))
+osur_agesex =  pd.Series(osur_agesex, index=range(1,iters+1))
+osurp_agesex =  pd.Series(osurp_agesex, index=range(1,iters+1))
+psur = pd.Series(psur, index=range(1,iters+1))
+psurp =  pd.Series(psurp, index=range(1,iters+1))
+psur_age =  pd.Series(psur_age, index=range(1,iters+1))
+psurp_age =  pd.Series(psurp_age, index=range(1,iters+1))
+psur_agesex =  pd.Series(psur_agesex, index=range(1,iters+1))
+psurp_agesex =  pd.Series(psurp_agesex, index=range(1,iters+1))
 
 
-print(repOut)
+
+
+
+
+repOut = pd.concat([nrows, orows, p1ve, av_ve, p1pp, osur, osurp, osur_age, osurp_age, osur_agesex, osurp_agesex, psur, psurp, psur_age, psurp_age, psur_agesex, psurp_agesex], axis=1)
+repOut.columns = outNames
+repOut.index = df1.index.values
+
+#print(repOut)
 #repOut.to_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/Replication Scripts')
 
 
