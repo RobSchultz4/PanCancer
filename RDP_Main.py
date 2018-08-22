@@ -269,7 +269,41 @@ repOut = pd.concat([nrows, orows, p1ve, av_ve, p1pp, osur, osurp, osur_age, osur
 repOut.columns = outNames
 repOut.index = df1.index.values
 
+
+
 #print(repOut)
 #repOut.to_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/Replication Scripts')
 
+num0bics = sum(orows < 1)
+num1gbics =  sum(orows < 2)
+num2gbics =  sum(orows < 3)
+numsmallbics = sum(orows < 4)
+bicperRepl = sum([orows[i] / nrows[i] for i in np.arange(1, len(repOut + 1))]) / len(repOut)
+perReplicatedBics2gs = sum([p1ve.dropna().iloc[i] > p1pp.dropna().iloc[i] for i in np.arange(0, len(p1ve.dropna()))])/len(p1ve.dropna())
+perReplicatedBics = sum([p1ve.dropna().iloc[i] > p1pp.dropna().iloc[i] for i in np.arange(0, len(p1ve.dropna()))])/len(repOut)
 
+perosurR = sum([osurp.dropna().iloc[i] < .05 for i in np.arange(0, len(osurp.dropna()))])/len(osurp.dropna())
+perpsurR = sum([psurp.dropna().iloc[i] < .05 for i in np.arange(0, len(psurp.dropna()))])/len(psurp.dropna())
+perosurAR = sum([osurp_age.dropna().iloc[i] < .05 for i in np.arange(0, len(osurp_age.dropna()))])/len(osurp_age.dropna())
+perpsurAR = sum([psurp_age.dropna().iloc[i] < .05 for i in np.arange(0, len(psurp_age.dropna()))])/len(psurp_age.dropna())
+perosurASR = sum([osurp_agesex.dropna().iloc[i] < .05 for i in np.arange(0, len(osurp_agesex.dropna()))])/len(osurp_agesex.dropna())
+perpsurASR = sum([psurp_agesex.dropna().iloc[i] < .05 for i in np.arange(0, len(psurp_agesex.dropna()))])/len(psurp_agesex.dropna())
+
+
+
+
+
+
+
+
+
+
+
+pstats = pd.Series[num0bics, num1gbics, num2gbics, numsmallbics, bicperRepl,perReplicatedBics2gs, perReplicatedBics, perosurR, perosurAR, perosurASR, perpsurR, perpsurAR, perpsurASR]  
+
+pstats.index=['number of bics with 0 genes','number of bics with 1 gene or less','number of bics with 2 genes or less','number of bics with 3 genes or less','percent of genes per bic in replication set (excludes bics with 1 or fewer genes in replication set)','Percent of Bics with 2 or more genes that replicate','Percent of Bics that replicate (includes all small bics)','Percent of bics with replicating os', 'Percent of bics with replicating os with age', 'Percent of bics with replicating survival with age and sec', 'Percent of bics replicating pfs', 'Percent of bics replicating pfs with age', 'Percent of bics replicating pfs with age and sex' ]
+
+
+
+
+pstats.to_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/Replication Scripts')
