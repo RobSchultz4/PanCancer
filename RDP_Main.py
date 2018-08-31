@@ -7,18 +7,16 @@ from sklearn.decomposition import PCA
 from scipy.stats import pearsonr
 from lifelines import CoxPHFitter
 import argparse
+from multiprocessing import Pool, cpu_count, Manager
 
 parser = argparse.ArgumentParser(description='use for testing RDP_test.py')
 
-parser.add_argument('name', help='Use these names to reference the material for each replication dataset', type = str)
+parser.add_argument('--name', help='Use these names to reference the material for each replication dataset', type = str)
+parser.add_argument('--postproc', help='TCGA three/four letter code underscore [pita, targetscan, or tfbs_db]', type = str)
 args = parser.parse_args()
-name = args.name
 
-def runPCA(kints, df2):
-    scaler = StandardScaler()
-    exbic = df2[kints]
-    scaler.fit(exbic)
-    pcbic = scaler.transform(exbic)
+def runPCA_2(kints, df2):
+    pcbic = df2[kints]
     pca = PCA(n_components=1)
     pca.fit(pcbic)
     pcbic = pca.transform(pcbic) # pcbic is the principal components of the bic for each patient
@@ -30,6 +28,11 @@ def runPCA(kints, df2):
     if float(c1[0])<float(0):
         pcbic = -pcbic
     return pca.explained_variance_ratio_[0], pcbic
+
+def repPCA_2(pcbic):
+    pca = PCA(n_components=1)
+    pca.fit(pcbic)
+    return pca.explained_variance_ratio_[0]
 
 
 #######################
@@ -76,8 +79,10 @@ def handleNaNs(p1, colname1, colname2, coxdf):
 ###
 #################################################################################################################
 
-accpp = pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/postProcessed_vSurv/postProcessed_ACC_pita.csv', header=0, index_col=0)
+print('Loading postproc...')
+accpp = pd.read_csv('postProcessed_vSurv/postProcessed_'+args.postproc+'.csv', header=0, index_col=0)
 tfcols = ['Up.MEME Motif1 Correlated Matches_ACC', 'Up.MEME Motif2 Correlated Matches_ACC', 'Up.WEEDER Motif1 Correlated Matches_ACC', 'Up.WEEDER Motif2 Correlated Matches_ACC', 'TFBS_DB.Correlated Matches_ACC']
+print('Done.')
 
 def tfsplit(string):
     if isinstance(string, str):
@@ -114,7 +119,6 @@ for bic in tfs.index.values:
 
 #Only keep the sifnificant tfs
 sigintfs = pd.Series([[] for i in range(0, len(tfs))], index=tfs.index.values)
-#tfs[1][0][0, 1, 2]
 for bic in tfs.index.values:
   for tf in range(0, tfs.str.len()[bic]):
     if float(tfs[bic][tf][2]) < 0.05:   #if there is a significant pvalue
@@ -131,8 +135,6 @@ for bic in tfs.index.values:
 
 uassaytfs = pd.Series(uassaytfs, index=sigintfs.index.values)
 
-#repOut = pd.DataFrame([], columns = ['P-Value', 'Coefficient', 'Replicated TFs', 'Failed TFs', 'Missing TFs'], index = sigintfs.index.values)
-
 #################################################################################################################
 ###
 ### Replicate Biclusters 
@@ -144,12 +146,9 @@ accpp.rename(columns={'Genes.1':'ENTREZ'}, inplace=True)
 biclustMembership = pd.DataFrame(accpp["ENTREZ"].apply(lambda x: [int(i) for i in x.split()]))
 
 #Read in a second dataset (REPLICATION DATASET
-ratSec = pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/Reconstructed exprs/' + name + '_exprs_entrez.csv', header=0, index_col=0)
-
-#mask=[]
-# mask is false if sum is zero and true if sum is not zero
-#mask=[sum(ratSec.loc[i])!=0 for i in ratSec.index] 
-#ratSec=ratSec[mask]
+print('\nLoading exprs...')
+ratSec = pd.read_csv('Reconstructed exprs/' + args.name + '_exprs_entrez.csv', header=0, index_col=0)
+print('Done.')
 
 #InbMentrez=pd.Index([j for i in biclustMembership['ENTREZ'] for j in i])
 intersection = pd.Series([])
@@ -161,6 +160,7 @@ outNames = ['n_rows', 'overlap_rows', 'pc1_var_exp', 'avg_pc1_var_exp', 'pc1_per
 
 permutations = 1000
 repOut = pd.DataFrame(index = accpp.index.values, columns = outNames)
+repOut.index.name = "Bicluster"
 repOut['n_rows'] = pd.Series(accpp['Genes'])
 repOut['overlap_rows'] = intersection.apply(lambda x: len(x))
 
@@ -169,47 +169,59 @@ iters = len(intersection)
 C = []
 P = []
 
-'''
-repOut['pc1_var_exp'] = []
-repOut['avg_pc1_var_exp'] = []
-repOut['pc1_perm_p'] = []
-repOut['os_survival'] =  []
-repOut['os_survival_p'] =  []
-repOut['os_survival_age'] =  []
-repOut['os_survival_age_p'] =  []
-repOut['os_survival_age_sex'] =  []
-repOut['os_survival_age_sex_p'] =  []
-repOut['pfs_survival'] =  []
-repOut['pfs_survival_p']=  []
-repOut['pfs_survival_age']=  []
-repOut['pfs_survival']=  []
-repOut['pfs_survival_age_sex']=  []
-repOut['pfs_survival_age_sex_p']=  []
-'''
+# Standardize the whole ratSec dataframe
+scaler = StandardScaler()
+exbic = df2
+scaler.fit(exbic)
+pcbic = scaler.transform(exbic)
+df3 = pd.DataFrame(pcbic, columns=df2.columns, index=df2.index)
 
-p1 = pd.read_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/Reconstructed pData/' + name + '_pData_recon.csv', header=0, index_col=0)
+print('\nLoading pData...')
+p1 = pd.read_csv('Reconstructed pData/' + args.name + '_pData_recon.csv', header=0, index_col=0)
+print('Done.')
+
+import time as t1
+
+"""def runReps(x):
+    pverando.append(repPCA_2(df3[x]))
+"""
 
 for k in np.arange(0, iters):
+    start1 = t1.time()
     kints = intersection[k+1]
-    testEmrows = pd.Series([])
-    testEmrows[1] = kints
     pverando = []
     if len(kints) > 1: 
-        varex, pcbic = runPCA(kints, df2)
-        repOut['pc1_var_exp'].loc[k+1] = varex
-        for i in np.arange(2, permutations+2):
-            testEmrows[i] = random.sample(list(ratSec.index), repOut['overlap_rows'][k+1])
+        start_varexp = t1.time()
+        #start_pca2 = t1.time()
+        varex, pcbic = runPCA_2(kints, df3)
+        #end_pca2 = t1.time()
+        #print('    PCA2',end_pca2-start_pca2)
+        repOut.loc[k+1,'pc1_var_exp'] = varex
+        #mgr = Manager()
+        #pverando = mgr.list()
+        rands1 = [random.sample(list(ratSec.index), repOut['overlap_rows'][k+1]) for i in range(permutations)]
+
+        for x in rands1:
+            #rand1 = random.sample(list(ratSec.index), repOut['overlap_rows'][k+1])
             #need only exprs for the entrez in testEmrows
-            varex, pcrando = runPCA(testEmrows[i], df2)
-            pverando.append(varex)
-        repOut['avg_pc1_var_exp'].loc[k+1] = sum(pverando)/len(pverando)
-        repOut['pc1_perm_p'].loc[k+1] = sum(pverando > varex)/permutations
+            #start_rep2 = t1.time()
+            varex2 = repPCA_2(df3[x])
+            #end_rep2 = t1.time()
+            #print('    REP2',end_rep2-start_rep2)
+            pverando.append(varex2)
+        
+        repOut.loc[k+1,'avg_pc1_var_exp'] = sum(pverando)/len(pverando)
+        repOut.loc[k+1,'pc1_perm_p'] = sum(pverando > varex)/permutations
+        print(repOut['pc1_perm_p'][k+1])
+        end_varexp = t1.time()
+        print('  VAREXP_time',end_varexp-start_varexp)
+
         #####################################################################################################
         ###
         ### Replicate Survival
         ###
         #####################################################################################################
-
+        start_surv = t1.time()
         coxdfo = pd.DataFrame([])
         coxdfp = pd.DataFrame([])
         # Run if there is any survival info availible
@@ -222,162 +234,77 @@ for k in np.arange(0, iters):
                 coxdfo['OS.STATUS'] = status
                 coxdfo['OS.TIME'] = time
                 survo = runcph(coxdfo, 'OS.TIME', 'OS.STATUS')
-                repOut['os_survival'].loc[k+1] = survo.summary['z'].tolist()[0]
-                repOut['os_survival_p'].loc[k+1] = survo.summary['p'].tolist()[0]
+                repOut.loc[k+1,'os_survival'] = survo.summary['z'].tolist()[0]
+                repOut.loc[k+1,'os_survival_p'] = survo.summary['p'].tolist()[0]
                 # Run if there is also age information
                 if isincluded(p1, 'AGE'):
                     coxdfo['AGE'] = p1['AGE']
                     survAo = runcph(coxdfo, 'OS.TIME', 'OS.STATUS')
-                    repOut['os_survival_age'].loc[k+1] = survAo.summary['z'].tolist()[0]
-                    repOut['os_survival_age_p'].loc[k+1] = survAo.summary['p'].tolist()[0] 
+                    repOut.loc[k+1,'os_survival_age'] = survAo.summary['z'].tolist()[0]
+                    repOut.loc[k+1,'os_survival_age_p'] = survAo.summary['p'].tolist()[0] 
 
                     # Run if there is also sex information
                     if isincluded(p1, 'SEX'):
                         coxdfo['SEX'] = pd.get_dummies(p1['SEX'])['M'] # Male is 1 and female is 0
                         survASo = runcph(coxdfo, 'OS.TIME', 'OS.STATUS')
-                        repOut['os_survival_age_sex'].loc[k+1] = survASo.summary['z'].tolist()[0]
-                        repOut['os_survival_age_sex_p'].loc[k+1] = survASo.summary['p'].tolist()[0]
-            else:
-                '''
-                MAKE NA
-                repOut['os_survival'].loc[k+1] = np.NaN)
-                repOut['os_survival_p'].loc[k+1] = np.NaN)  
-                repOut['os_survival_age'].loc[k+1] = np.NaN)  
-                repOut['os_survival_sex'].loc[k+1] = np.NaN)  
-                repOut['os_survival_age_sex'].loc[k+1] = np.NaN)
-                repOut['os_survival_age_sex_p'].loc[k+1] = np.NaN)
-                '''
+                        repOut.loc[k+1,'os_survival_age_sex'] = survASo.summary['z'].tolist()[0]
+                        repOut.loc[k+1,'os_survival_age_sex_p'] = survASo.summary['p'].tolist()[0]
             # Run if there is Progression Free Survival
             if isincluded(p1, 'PFS.STATUS') and isincluded(p1, 'PFS.TIME'):
                 time, status, coxdfp = handleNaNs(p1, 'PFS.TIME', 'PFS.STATUS', coxdfp)
                 coxdfp['PFS.STATUS'] = status
                 coxdfp['PFS.TIME'] = time 
                 survp = runcph(coxdfp, 'PFS.TIME', 'PFS.STATUS')
-                repOut['pfs_survival'].loc[k+1] = survp.summary['z'].tolist()[0]   
-                repOut['pfs_survival_p'].loc[k+1] = survp.summary['p'].tolist()[0]
+                repOut.loc[k+1,'pfs_survival'] = survp.summary['z'].tolist()[0]   
+                repOut.loc[k+1,'pfs_survival_p'] = survp.summary['p'].tolist()[0]
                 # Run if there is also age information
                 if isincluded(p1, 'AGE'):
                     coxdfp['AGE'] = p1['AGE']
                     survAp = runcph(coxdfp, 'PFS.TIME', 'PFS.STATUS')
-                    repOut['pfs_survival_age'].loc[k+1] = survAp.summary['z'].tolist()[0]
-                    repOut['pfs_survival_age_p'].loc[k+1] = survAp.summary['p'].tolist()[0]
+                    repOut.loc[k+1,'pfs_survival_age'] = survAp.summary['z'].tolist()[0]
+                    repOut.loc[k+1,'pfs_survival_age_p'] = survAp.summary['p'].tolist()[0]
                     # Run if there is also sex information
                     if isincluded(p1, 'SEX'):
                         coxdfp['SEX'] = pd.get_dummies(p1['SEX'])['M'] # Male is 1 and female is 0
                         survASp = runcph(coxdfp, 'PFS.TIME', 'PFS.STATUS')
-                        repOut['pfs_survival_age_sex'].loc[k+1] = survASp.summary['z'].tolist()[0]
-                        repOut['pfs_survival_age_sex_p'].loc[k+1] = survASp.summary['p'].tolist()[0]
-            else:
-                '''
-                repOut['pfs_survival'].loc[k+1] = np.NaN)
-                repOut['pfs_survival']p.append(np.NaN)
-                repOut['pfs_survival']_age.append(np.NaN)
-                repOut['pfs_survival']p_age.append(np.NaN)
-                repOut['pfs_survival']_agesex.append(np.NaN)
-                repOut['pfs_survival']p_agesex.append(np.NaN)
-                '''
-        else:
-            '''
-            NEED to make "NA"
-            repOut['os_survival'].loc[k+1] = np.NaN)
-            repOut['os_survival']p.append(np.NaN)  
-            repOut['os_survival']_age.append(np.NaN)  
-            repOut['os_survival']p_age.append(np.NaN)  
-            repOut['os_survival']_agesex.append(np.NaN)
-            repOut['os_survival']p_agesex.append(np.NaN)
-            repOut['pfs_survival'].loc[k+1] = np.NaN)
-            repOut['pfs_survival']p.append(np.NaN)
-            repOut['pfs_survival']_age.append(np.NaN)
-            repOut['pfs_survival']p_age.append(np.NaN)
-            repOut['pfs_survival']_agesex.append(np.NaN)
-            repOut['pfs_survival']p_agesex.append(np.NaN)
-            NEED to make "NA"
-            '''
+                        repOut.loc[k+1,'pfs_survival_age_sex'] = survASp.summary['z'].tolist()[0]
+                        repOut.loc[k+1,'pfs_survival_age_sex_p'] = survASp.summary['p'].tolist()[0]
+        end_surv = t1.time()
+        print('  SURV_time',end_surv-start_surv)
 
         #####################################################################################################
         ###
-        ### End Survival 
-        ###
+        ### Replicate TFs---- THIS NEEDS AN IF STATEMENT SAYING IF BIC IS NOT IN THE INDEX OF SIGINTFS THEN
+        ### SKIP IT-- that idea may be useful for survival too instead of having so many nans 
         #####################################################################################################
-    else:
-        ''' Make NA
+        start_tf1 = t1.time()
+        if k+1 in sigintfs.index.values: 
+            reptflist = []
+            failtflist = []
+            tcgareptfs = np.intersect1d(uassaytfs[k+1], df2.columns)
+            repOut.loc[k+1,'Missing TFs'] = ' '.join(np.setdiff1d(np.array(uassaytfs[k+1]), tcgareptfs))
+            repOut.loc[k+1,'Replicated TFs'] = ''
+            repOut.loc[k+1,'Failed TFs'] = ''
 
-        repOut['pc1_var_exp'].loc[k+1] = np.NaN)
-        repOut['avg_pc1_var_exp'].loc[k+1] = np.NaN)
-        #pverando.append(np.NaN)
-        repOut['pc1_perm_p'].loc[k+1] = np.NaN)
-        repOut['os_survival'].loc[k+1] = np.NaN)
-        repOut['os_survival']p.append(np.NaN)  
-        repOut['os_survival']_age.append(np.NaN)  
-        repOut['os_survival']p_age.append(np.NaN)  
-        repOut['os_survival']_agesex.append(np.NaN)
-        repOut['os_survival']p_agesex.append(np.NaN)
-        repOut['pfs_survival'].loc[k+1] = np.NaN)
-        repOut['pfs_survival']p.append(np.NaN)
-        repOut['pfs_survival']_age.append(np.NaN)
-        repOut['pfs_survival']p_age.append(np.NaN)
-        repOut['pfs_survival']_agesex.append(np.NaN)
-        repOut['pfs_survival']p_agesex.append(np.NaN)
-        '''
-    #####################################################################################################
-    ###
-    ### Replicate TFs---- THIS NEEDS AN IF STATEMENT SAYING IF BIC IS NOT IN THE INDEX OF SIGINTFS THEN
-    ### SKIP IT-- that idea may be useful for survival too instead of having so many nans 
-    #####################################################################################################
-     
-    if k+1 in sigintfs.index.values: 
-        reptflist = []
-        failtflist = []
-        tcgareptfs = np.intersect1d(uassaytfs[k+1], df2.columns)
-        repOut['Missing TFs'][k+1] = ' '.join(np.setdiff1d(np.array(uassaytfs[k+1]), tcgareptfs))
-        repOut['Replicated TFs'][k+1] = ''
-        repOut['Failed TFs'][k+1] = ''
+            for i in np.arange(0, len(tcgareptfs)):
+                coef, pval = pearsonr(pcbic, df2[int(tcgareptfs[i])])
+                C.append(coef)
+                P.append(pval)
+                if pval <= 0.05:
+                    repOut.loc[k+1,'Replicated TFs'] = repOut['Replicated TFs'][k+1] + ' ' + tcgareptfs[i] + ':' + str(coef) + ':' + str(pval)
+                    #reptflist.append(tcgareptfs[i])
+                else:
+                    repOut[k+1,'Failed TFs'] = repOut['Failed TFs'][k+1] + ' ' + tcgareptfs[i] + ':' + str(coef) + ':' + str(pval)   
+                    #failtflist.append(tcgareptfs[i])
 
-        for i in np.arange(0, len(tcgareptfs)):
-            coef, pval = pearsonr(pcbic, df2[int(tcgareptfs[i])])
-            C.append(coef)
-            P.append(pval)
-            if pval <= 0.05:
-                repOut['Replicated TFs'][k+1] = repOut['Replicated TFs'][k+1] + ' ' + tcgareptfs[i] + ':' + str(coef) + ':' + str(pval)
-                #reptflist.append(tcgareptfs[i])
-            else:
-                repOut['Failed TFs'][k+1] = repOut['Failed TFs'][k+1] + ' ' + tcgareptfs[i] + ':' + str(coef) + ':' + str(pval)   
-                #failtflist.append(tcgareptfs[i])
+            repOut.loc[k+1,'Replicated TFs'] = repOut['Replicated TFs'][k+1][1:]    
+            repOut.loc[k+1,'Failed TFs'] = repOut['Failed TFs'][k+1][1:]
+        end_tf1 = t1.time()
+        print('  TF_time',end_tf1-start_tf1)
+    
+    end1 = t1.time()
+    print('Bicluster #',k+1,': ',end1-start1)
 
-        repOut['Replicated TFs'][k+1] = repOut['Replicated TFs'][k+1][1:]    
-        repOut['Failed TFs'][k+1] = repOut['Failed TFs'][k+1][1:]
-        '''        
-        repOut['P-Value'].loc[k+1] = P 
-        repOut['Coefficient'].loc[k+1] = C
-        repOut['Replicated TFs'].loc[k+1] = reptflist
-        repOut['Failed TFs'].loc[k+1] = failtflist
-        repOut['Missing TFs'].loc[k+1] = missingtfs[0].tolist()
-        '''
-#repOut['pc1_perm_p'] is the probability of a random variance explained (pve[2:len(pve)) being larger than pc1 (pve[0])
-
-'''Shouldnt be necessary
-repOut['pc1_var_exp'] = pd.Series(repOut['pc1_var_exp'], index=range(1, iters+1))
-repOut['avg_pc1_var_exp'] = pd.Series(repOut['avg_pc1_var_exp'], index=range(1, iters+1))
-repOut['pc1_perm_p'] = pd.Series(repOut['pc1_perm_p'], index=range(1, iters+1))
-
-repOut['os_survival'] = pd.Series(repOut['os_survival'], index=range(1, iters+1))
-repOut['os_survival']p =  pd.Series(repOut['os_survival']p, index=range(1, iters+1))
-repOut['os_survival']_age =  pd.Series(repOut['os_survival']_age, index=range(1, iters+1))
-repOut['os_survival']p_age =  pd.Series(repOut['os_survival']p_age, index=range(1, iters+1))
-repOut['os_survival']_agesex =  pd.Series(repOut['os_survival']_agesex, index=range(1, iters+1))
-repOut['os_survival']p_agesex =  pd.Series(repOut['os_survival']p_agesex, index=range(1, iters+1))
-repOut['pfs_survival'] = pd.Series(repOut['pfs_survival'], index=range(1, iters+1))
-repOut['pfs_survival']p =  pd.Series(repOut['pfs_survival']p, index=range(1, iters+1))
-repOut['pfs_survival']_age =  pd.Series(repOut['pfs_survival']_age, index=range(1, iters+1))
-repOut['pfs_survival']p_age =  pd.Series(repOut['pfs_survival']p_age, index=range(1, iters+1))
-repOut['pfs_survival']_agesex =  pd.Series(repOut['pfs_survival']_agesex, index=range(1, iters+1))
-repOut['pfs_survival']p_agesex =  pd.Series(repOut['pfs_survival']p_agesex, index=range(1, iters+1))
-
-repOut = pd.concat([repOut['n_rows'], repOut['overlap_rows'], repOut['pc1_var_exp'], repOut['avg_pc1_var_exp'], repOut['pc1_perm_p'], repOut['os_survival'], repOut['os_survival_p'], repOut['os_survival_age'], repOut['os_survival_age_p'], repOut['os_survival_age_sex'], repOut['os_survival_age_sex_p'], repOut['pfs_survival'], repOut['pfs_survival']p, repOut['pfs_survival']_age, repOut['pfs_survival']p_age, repOut['pfs_survival']_agesex, repOut['pfs_survival']p_agesex], axis=1)
-repOut.columns = outNames
-repOut.index = df1.index.values
-df1.index.values
-'''
 
 #####################################################################################################
 ###
@@ -390,7 +317,8 @@ num1gbics =  sum(repOut['overlap_rows'] < 2)
 num2gbics =  sum(repOut['overlap_rows'] < 3)
 numsmallbics = sum(repOut['overlap_rows'] < 4)
 bicperRepl = sum([repOut['overlap_rows'][i] / repOut['n_rows'][i] for i in np.arange(1, len(repOut) + 1)]) / len(repOut)
-perReplicatedBics = sum([repOut['pc1_var_exp'].dropna()[i] > repOut['pc1_perm_p'].dropna()[i] for i in repOut['pc1_var_exp'].dropna().index.values])/len(repOut['pc1_var_exp'].dropna())
+
+perReplicatedBics = sum([repOut['pc1_perm_p'].dropna()[i] > 0.05 for i in repOut['pc1_perm_p'].dropna().index.values])/len(repOut['pc1_perm_p'].dropna())
 
 perosurR = sum([repOut['os_survival_p'].dropna()[i] < .05 for i in repOut['os_survival'].dropna().index.values])/len(repOut['os_survival'].dropna())
 perpsurR = sum([repOut['pfs_survival_p'].dropna()[i] < .05 for i in repOut['pfs_survival'].dropna().index.values])/len(repOut['pfs_survival'].dropna())
@@ -412,7 +340,7 @@ numbicsreptf = len(list(set([i for i in repOut['Replicated TFs'].dropna().apply(
 
 pstats = pd.Series([num0bics, num1gbics, num2gbics, numsmallbics, bicperRepl, perReplicatedBics, perosurR, perosurAR, perosurASR, perpsurR, perpsurAR, perpsurASR, numUmissingtfs, numbicsreptf] ) 
 
-pstats.index=['number of bics with 0 genes', 'number of bics with 1 gene or less', 'number of bics with 2 genes or less', 'number of bics with 3 genes or less', 'percent of genes per bic in replication set (excludes bics with 1 or fewer genes in replication set)', 'Percent of Bics replicate', 'Percent of bics with replicating os', 'Percent of bics with replicating os with age', 'Percent of bics with replicating survival with age and sec', 'Percent of bics replicating pfs', 'Percent of bics replicating pfs with age', 'Percent of bics replicating pfs with age and sex', 'number of tfs missing in replication dataset', 'number of bics with a replicated tf']
+pstats.index=['number of bics with 0 genes', 'number of bics with 1 gene or less', 'number of bics with 2 genes or less', 'number of bics with 3 genes or less', 'percent of genes per bic in replication set (excludes bics with 1 or fewer genes in replication set)', 'Percent of Bics that replicate', 'Percent of bics with replicating os', 'Percent of bics with replicating os with age', 'Percent of bics with replicating survival with age and sex', 'Percent of bics replicating pfs', 'Percent of bics replicating pfs with age', 'Percent of bics replicating pfs with age and sex', 'number of tfs missing in replication dataset', 'number of bics with a replicated tf']
 #####################################################################################################
 ###
 ### Output Results
@@ -421,7 +349,6 @@ pstats.index=['number of bics with 0 genes', 'number of bics with 1 gene or less
 
 
 repOut=repOut.replace(['', np.nan], 'NA')
-pstats.to_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/code/PanCancerRepl/output/repstats/repstats' + name + '.csv')
-repOut.to_csv('C:/Users/rschult4/Dropbox (ASU)/PanCancer/code/PanCancerRepl/output/repOut/repOut' + name +'.csv')
-
+pstats.to_csv('output/repstats/repstats_' + args.name + '.csv')
+repOut.to_csv('output/repOut/repOut_' + args.name +'.csv')
 
