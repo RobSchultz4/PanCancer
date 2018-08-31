@@ -40,7 +40,7 @@ def repPCA_2(pcbic):
 #######################
 def runcph(coxdf, dur, eve):
     cph = CoxPHFitter()
-    cph.fit(coxdf, duration_col = dur, event_col = eve, show_progress = False)  
+    cph.fit(coxdf, duration_col = dur, event_col = eve, show_progress = True, step_size = 0.5)  
     return cph
 
 def isincluded(p1, colname):
@@ -106,8 +106,7 @@ s2 = inputTFs[inputTFs.columns[2]].apply(lambda x: tfsplit(x))
 s3 = inputTFs[inputTFs.columns[3]].apply(lambda x: tfsplit(x))
 s4 = inputTFs[inputTFs.columns[4]].apply(lambda x: tfsplit(x))
 
-alls = [s0, s1, s2, s3, s4]
-ss = pd.DataFrame(alls)
+ss = pd.DataFrame([s0, s1, s2, s3, s4])
 
 #make sure none are empty
 tfs = pd.Series([ss[i].dropna().tolist() for i in ss.columns], index = ss.columns)
@@ -147,7 +146,7 @@ biclustMembership = pd.DataFrame(accpp["ENTREZ"].apply(lambda x: [int(i) for i i
 
 #Read in a second dataset (REPLICATION DATASET
 print('\nLoading exprs...')
-ratSec = pd.read_csv('Reconstructed exprs/' + args.name + '_exprs_entrez.csv', header=0, index_col=0)
+ratSec = pd.read_csv('Reconstructed_exprs/' + args.name + '_exprs_entrez.csv', header=0, index_col=0)
 print('Done.')
 
 #InbMentrez=pd.Index([j for i in biclustMembership['ENTREZ'] for j in i])
@@ -177,7 +176,7 @@ pcbic = scaler.transform(exbic)
 df3 = pd.DataFrame(pcbic, columns=df2.columns, index=df2.index)
 
 print('\nLoading pData...')
-p1 = pd.read_csv('Reconstructed pData/' + args.name + '_pData_recon.csv', header=0, index_col=0)
+p1 = pd.read_csv('Reconstructed_pdata/' + args.name + '_pData_recon.csv', header=0, index_col=0)
 print('Done.')
 
 import time as t1
@@ -318,14 +317,30 @@ num2gbics =  sum(repOut['overlap_rows'] < 3)
 numsmallbics = sum(repOut['overlap_rows'] < 4)
 bicperRepl = sum([repOut['overlap_rows'][i] / repOut['n_rows'][i] for i in np.arange(1, len(repOut) + 1)]) / len(repOut)
 
-perReplicatedBics = sum([repOut['pc1_perm_p'].dropna()[i] > 0.05 for i in repOut['pc1_perm_p'].dropna().index.values])/len(repOut['pc1_perm_p'].dropna())
 
-perosurR = sum([repOut['os_survival_p'].dropna()[i] < .05 for i in repOut['os_survival'].dropna().index.values])/len(repOut['os_survival'].dropna())
-perpsurR = sum([repOut['pfs_survival_p'].dropna()[i] < .05 for i in repOut['pfs_survival'].dropna().index.values])/len(repOut['pfs_survival'].dropna())
-perosurAR = sum([repOut['os_survival_age_p'].dropna()[i] < .05 for i in repOut['os_survival_age'].dropna().index.values])/len(repOut['os_survival_age'].dropna())
-perpsurAR = sum([repOut['pfs_survival_age_p'].dropna()[i] < .05 for i in repOut['pfs_survival_age'].dropna().index.values])/len(repOut['pfs_survival_age'].dropna())
-perosurASR = sum([repOut['os_survival_age_sex_p'].dropna()[i] < .05 for i in repOut['os_survival_age_sex'].dropna().index.values])/len(repOut['os_survival_age_sex'].dropna())
-perpsurASR = sum([repOut['pfs_survival_age_sex_p'].dropna()[i] < .05 for i in repOut['pfs_survival_age_sex'].dropna().index.values])/len(repOut['pfs_survival_age_sex'].dropna())
+
+if isincluded(p1, 'OS.STATUS') and isincluded(p1, 'OS.TIME'):
+    perosurR = sum([repOut['os_survival_p'].dropna()[i] < .05 for i in repOut['os_survival'].dropna().index.values])/len(repOut['os_survival'].dropna())
+    perosurAR = sum([repOut['os_survival_age_p'].dropna()[i] < .05 for i in repOut['os_survival_age'].dropna().index.values])/len(repOut['os_survival_age'].dropna())
+    perosurASR = sum([repOut['os_survival_age_sex_p'].dropna()[i] < .05 for i in repOut['os_survival_age_sex'].dropna().index.values])/len(repOut['os_survival_age_sex'].dropna())
+else:
+    perosurR = 'no os survival'
+    perosurAR = 'no os survival'
+    perosurASR = 'no os survival'
+
+
+if isincluded(p1, 'PFS.STATUS') and isincluded(p1, 'PFS.TIME'):
+    perpsurR = sum([repOut['pfs_survival_p'].dropna()[i] < .05 for i in repOut['pfs_survival'].dropna().index.values])/len(repOut['pfs_survival'].dropna())
+    perpsurAR = sum([repOut['pfs_survival_age_p'].dropna()[i] < .05 for i in repOut['pfs_survival_age'].dropna().index.values])/len(repOut['pfs_survival_age'].dropna())
+    perpsurASR = sum([repOut['pfs_survival_age_sex_p'].dropna()[i] < .05 for i in repOut['pfs_survival_age_sex'].dropna().index.values])/len(repOut['pfs_survival_age_sex'].dropna())
+else:
+    perpsurR = 'no pfs survival'
+    perpsurAR = 'no pfs survival'
+    perpsurASR = 'no pfs survival'
+
+
+perReplicatedBics = sum([repOut['pc1_perm_p'].dropna()[i] < 0.05 for i in repOut['pc1_perm_p'].dropna().index.values])/len(repOut['pc1_perm_p'].dropna())
+
 
 if list(set([i for j in repOut['Failed TFs'].dropna().apply(lambda x: str(x).split(sep = ' ')) for i in j]))[0] == '':
     Umissingtfs = list(set([i for j in repOut['Failed TFs'].dropna().apply(lambda x: str(x).split(sep = ' ')) for i in j]))[1:]
