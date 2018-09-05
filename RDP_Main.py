@@ -111,8 +111,8 @@ ss = pd.DataFrame([s0, s1, s2, s3, s4])
 
 #make sure none are empty
 tfs = pd.Series([ss[i].dropna().tolist() for i in ss.columns], index = ss.columns)
-mask = tfs.str.len() != 0
-tfs = tfs[mask]
+mask0 = tfs.str.len() != 0
+tfs = tfs[mask0]
 
 for bic in tfs.index.values:
     tfs[bic]=[i for j in tfs.loc[bic] for i in j]
@@ -150,34 +150,29 @@ print('\nLoading exprs...')
 ratSec = pd.read_csv('Reconstructed_exprs/' + args.name + '_exprs_entrez.csv', header=0, index_col=0)
 print('Done.')
 
-#InbMentrez=pd.Index([j for i in biclustMembership['ENTREZ'] for j in i])
-intersection = pd.Series([])
-for i in np.arange(1, biclustMembership.shape[0]+1):
-    intersection[i] = np.intersect1d(biclustMembership['ENTREZ'][i], ratSec.index.values)
 
 ks = biclustMembership.shape[0]
 outNames = ['n_rows', 'overlap_rows', 'pc1_var_exp', 'avg_pc1_var_exp', 'pc1_perm_p', 'os_survival', 'os_survival_p', 'os_survival_age', 'os_survival_age_p', 'os_survival_age_sex', 'os_survival_age_sex_p', 'pfs_survival', 'pfs_survival_p', 'pfs_survival_age', 'pfs_survival_age_p', 'pfs_survival_age_sex', 'pfs_survival_age_sex_p', 'Replicated TFs','Failed TFs', 'Missing TFs']
 
-permutations = 1000
-repOut = pd.DataFrame(index = accpp.index.values, columns = outNames)
-repOut.index.name = "Bicluster"
-repOut['n_rows'] = pd.Series(accpp['Genes'])
-repOut['overlap_rows'] = intersection.apply(lambda x: len(x))
-
 df2 = ratSec.T
-iters = len(intersection)
+iters = 2 #len(intersected)
 C = [] 
 P = []
 
 # Standardize the whole ratSec dataframe
 scaler = StandardScaler()
-exall = df2[sorted(list(set([i for j in biclustMembership['ENTREZ'] for i in j]).intersection(df2.columns)))]
+exall = df2[list(set(df2.columns).intersection([i for j in biclustMembership['ENTREZ'] for i in j]))]
 scaler.fit(exall)
 exall_scaled= scaler.transform(exall)
-df3 = pd.DataFrame(exall_scaled, columns=df2.columns, index=df2.index)
+df3 = pd.DataFrame(exall_scaled, columns=exall.columns, index=exall.index)
+
+#InbMentrez=pd.Index([j for i in biclustMembership['ENTREZ'] for j in i])
+intersected = pd.Series([])
+for i in np.arange(1, biclustMembership.shape[0]+1):
+    intersected[i] = list(set(df3.columns).intersection(biclustMembership['ENTREZ'][i]))
 
 print('\nLoading pData...')
-p1 = pd.read_csv('Reconstructed_pdata/' + args.name + '_pData_recon.csv', header=0, index_col=0)
+p1 = pd.read_csv('Reconstructed_pData/' + args.name + '_pData_recon.csv', header=0, index_col=0)
 print('Done.')
 
 import time as t1
@@ -186,9 +181,15 @@ import time as t1
     pverando.append(repPCA_2(df3[x]))
 """
 
-for k in np.arange(0, iters):
+permutations = 1000
+repOut = pd.DataFrame(index = accpp.index.values, columns = outNames)
+repOut.index.name = "Bicluster"
+repOut['n_rows'] = pd.Series(accpp['Genes'])
+repOut['overlap_rows'] = intersected.apply(lambda x: len(x))
+
+for k in range(0, iters):
     start1 = t1.time()
-    kints = intersection[k+1]
+    kints = intersected[k+1]
     pverando = []
     if len(kints) > 1: 
         start_varexp = t1.time()
@@ -363,6 +364,6 @@ pstats.index=['number of bics with 0 genes', 'number of bics with 1 gene or less
 
 
 repOut=repOut.replace(['', np.nan], 'NA')
-pstats.to_csv('output/repstats/repstats_' + args.name + '_' + args.postprocess + '.csv')
-repOut.to_csv('output/repOut/repOut_' + args.name + + '_' + args.postprocess + '.csv')
+pstats.to_csv('output/repStats/repStats_' + args.name + '_' + args.postproc + '.csv')
+repOut.to_csv('output/repOut/repOut_' + args.name + '_' + args.postproc + '.csv')
 

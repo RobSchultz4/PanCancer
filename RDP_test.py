@@ -12,7 +12,7 @@ for postproc in postprocs:
         RDPproc.communicate()
 
 tcga = pd.read_csv('postProcessed_vSurv/postProcessed_ACC_pita.csv', header = 0, index_col = 0)
-repOut = pd.read_csv('output/repOut/repOut_tcga_acc_test.csv', header = 0, index_col = 0)
+repOut = pd.read_csv('output/repOut/repOut_tcga_acc_test_ACC_pita.csv', header = 0, index_col = 0)
 
 
 ######################
