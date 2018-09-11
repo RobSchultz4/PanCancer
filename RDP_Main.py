@@ -1,3 +1,4 @@
+#! /home/cplaisier/anaconda2/bin/python
 import csv
 import pandas as pd
 import numpy as np
@@ -14,6 +15,7 @@ parser = argparse.ArgumentParser(description='use for testing RDP_test.py')
 parser.add_argument('--name', help='Use these names to reference the material for each replication dataset', type = str)
 parser.add_argument('--postproc', help='TCGA three/four letter code underscore [pita, targetscan, or tfbs_db]', type = str)
 args = parser.parse_args()
+print(args)
 
 def runPCA_2(kints, df):
     exbic = df[kints]
@@ -40,7 +42,7 @@ def repPCA_2(pcbic):
 #######################
 def runcph(coxdf, dur, eve):
     cph = CoxPHFitter()
-    cph.fit(coxdf, duration_col = dur, event_col = eve, show_progress = True, step_size = 0.5)  
+    cph.fit(coxdf, duration_col = dur, event_col = eve, show_progress = True, step_size = 0.4)
     return cph
 
 def isincluded(p1, colname):
@@ -59,11 +61,11 @@ def makeMask(colname1, colname2):
         elif mask2[i] == False:
             mask[i] = False
         else:
-            mask[i] = True 
+            mask[i] = True
     return mask
 
 def handleNaNs(p1, colname1, colname2, coxdf):
-    if any(pd.isnull(p1[colname1])) or any(pd.isnull(p1[colname2])): 
+    if any(pd.isnull(p1[colname1])) or any(pd.isnull(p1[colname2])):
         mask = makeMask(colname1, colname2)
         coxdf = coxdf[mask]
         status = p1[colname2][mask]
@@ -81,21 +83,22 @@ def handleNaNs(p1, colname1, colname2, coxdf):
 #################################################################################################################
 
 print('Loading postproc...')
-accpp = pd.read_csv('postProcessed_vSurv/postProcessed_'+args.postproc+'.csv', header=0, index_col=0)
-tfcols = ['Up.MEME Motif1 Correlated Matches_ACC', 'Up.MEME Motif2 Correlated Matches_ACC', 'Up.WEEDER Motif1 Correlated Matches_ACC', 'Up.WEEDER Motif2 Correlated Matches_ACC', 'TFBS_DB.Correlated Matches_ACC']
+cancer = args.postproc.split('_')[0]
+pp = pd.read_csv('postProcessed_vSurv/postProcessed_'+args.postproc+'.csv', header=0, index_col=0)
+tfcols = ['Up.MEME Motif1 Correlated Matches_'+cancer, 'Up.MEME Motif2 Correlated Matches_'+cancer, 'Up.WEEDER Motif1 Correlated Matches_'+cancer, 'Up.WEEDER Motif2 Correlated Matches_'+cancer, 'TFBS_DB.Correlated Matches_'+cancer]
 print('Done.')
 
 def tfsplit(string):
     if isinstance(string, str):
-        list1 = string.split(sep = ' ')
-        list2 = [i.split(sep = ':') for i in list1]
+        list1 = string.split(' ')
+        list2 = [i.split(':') for i in list1]
     else:
         list2 = string
     return list2
 
-inputTFs = pd.DataFrame([accpp[i] for i in tfcols]).T
+inputTFs = pd.DataFrame([pp[i] for i in tfcols]).T
 # Returns a DF with rows for each bicluster and columns for each Correlated matches
-# The contents are either nans for lists of lists. 
+# The contents are either nans for lists of lists.
 # Each sublist contains three values. The first is the entrez gene number
 # The seconds is the correlation coefficient
 # The third is the pvalue
@@ -126,10 +129,10 @@ for bic in tfs.index.values:
 
 #uniquify the tfs
 uassaytfs = []
-for bic in tfs.index.values: 
+for bic in tfs.index.values:
     assaytfs = []
     tfnums = []
-    for tf in range(0, tfs.str.len()[bic]):   
+    for tf in range(0, tfs.str.len()[bic]):
         assaytfs.append(sigintfs[bic][tf][0])
     uassaytfs.append(list(set(assaytfs)))
 
@@ -137,13 +140,13 @@ uassaytfs = pd.Series(uassaytfs, index=sigintfs.index.values)
 
 #################################################################################################################
 ###
-### Replicate Biclusters 
+### Replicate Biclusters
 ###
 #################################################################################################################
 
 # Bicluster is the index and lists of genes in the bicluster is the value
-accpp.rename(columns={'Genes.1':'ENTREZ'}, inplace=True)
-biclustMembership = pd.DataFrame(accpp["ENTREZ"].apply(lambda x: [int(i) for i in x.split()]))
+pp.rename(columns={'Genes.1':'ENTREZ'}, inplace=True)
+biclustMembership = pd.DataFrame(pp["ENTREZ"].apply(lambda x: [int(i) for i in x.split()]))
 
 #Read in a second dataset (REPLICATION DATASET
 print('\nLoading exprs...')
@@ -154,9 +157,8 @@ print('Done.')
 ks = biclustMembership.shape[0]
 outNames = ['n_rows', 'overlap_rows', 'pc1_var_exp', 'avg_pc1_var_exp', 'pc1_perm_p', 'os_survival', 'os_survival_p', 'os_survival_age', 'os_survival_age_p', 'os_survival_age_sex', 'os_survival_age_sex_p', 'pfs_survival', 'pfs_survival_p', 'pfs_survival_age', 'pfs_survival_age_p', 'pfs_survival_age_sex', 'pfs_survival_age_sex_p', 'Replicated TFs','Failed TFs', 'Missing TFs']
 
-df2 = ratSec.T
-iters = 2 #len(intersected)
-C = [] 
+df2 = ratSec.dropna().T
+C = []
 P = []
 
 # Standardize the whole ratSec dataframe
@@ -173,6 +175,7 @@ for i in np.arange(1, biclustMembership.shape[0]+1):
 
 print('\nLoading pData...')
 p1 = pd.read_csv('Reconstructed_pData/' + args.name + '_pData_recon.csv', header=0, index_col=0)
+p1 = p1.loc[df3.index]
 print('Done.')
 
 import time as t1
@@ -181,17 +184,18 @@ import time as t1
     pverando.append(repPCA_2(df3[x]))
 """
 
+iters = len(intersected)
 permutations = 1000
-repOut = pd.DataFrame(index = accpp.index.values, columns = outNames)
+repOut = pd.DataFrame(index = pp.index.values, columns = outNames)
 repOut.index.name = "Bicluster"
-repOut['n_rows'] = pd.Series(accpp['Genes'])
+repOut['n_rows'] = pd.Series(pp['Genes'])
 repOut['overlap_rows'] = intersected.apply(lambda x: len(x))
 
 for k in range(0, iters):
     start1 = t1.time()
     kints = intersected[k+1]
     pverando = []
-    if len(kints) > 1: 
+    if len(kints) > 1:
         start_varexp = t1.time()
         #start_pca2 = t1.time()
         varex, pcbic = runPCA_2(kints, df3)
@@ -215,7 +219,7 @@ for k in range(0, iters):
         repOut.loc[k+1,'pc1_perm_p'] = sum(pverando > varex)/permutations
         print(repOut['pc1_perm_p'][k+1])
         end_varexp = t1.time()
-        print('  VAREXP_time',end_varexp-start_varexp)
+        print('  VAREXP_time', end_varexp - start_varexp)
         #
         #####################################################################################################
         ###
@@ -234,50 +238,50 @@ for k in range(0, iters):
                 time, status, coxdfo = handleNaNs(p1, 'OS.TIME', 'OS.STATUS', coxdfo)
                 coxdfo['OS.STATUS'] = status
                 coxdfo['OS.TIME'] = time
-                survo = runcph(coxdfo, 'OS.TIME', 'OS.STATUS')
+                survo = runcph(coxdfo.dropna(), 'OS.TIME', 'OS.STATUS')
                 repOut.loc[k+1,'os_survival'] = survo.summary['z'].tolist()[0]
                 repOut.loc[k+1,'os_survival_p'] = survo.summary['p'].tolist()[0]
                 # Run if there is also age information
                 if isincluded(p1, 'AGE'):
                     coxdfo['AGE'] = p1['AGE']
-                    survAo = runcph(coxdfo, 'OS.TIME', 'OS.STATUS')
+                    survAo = runcph(coxdfo.dropna(), 'OS.TIME', 'OS.STATUS')
                     repOut.loc[k+1,'os_survival_age'] = survAo.summary['z'].tolist()[0]
-                    repOut.loc[k+1,'os_survival_age_p'] = survAo.summary['p'].tolist()[0] 
+                    repOut.loc[k+1,'os_survival_age_p'] = survAo.summary['p'].tolist()[0]
                     # Run if there is also sex information
-                    if isincluded(p1, 'SEX'):
+                    if isincluded(p1, 'SEX') and not all(p1['SEX'] == p1['SEX'][0]):
                         coxdfo['SEX'] = pd.get_dummies(p1['SEX'])['M'] # Male is 1 and female is 0
-                        survASo = runcph(coxdfo, 'OS.TIME', 'OS.STATUS')
+                        survASo = runcph(coxdfo.dropna(), 'OS.TIME', 'OS.STATUS')
                         repOut.loc[k+1,'os_survival_age_sex'] = survASo.summary['z'].tolist()[0]
                         repOut.loc[k+1,'os_survival_age_sex_p'] = survASo.summary['p'].tolist()[0]
             # Run if there is Progression Free Survival
             if isincluded(p1, 'PFS.STATUS') and isincluded(p1, 'PFS.TIME'):
                 time, status, coxdfp = handleNaNs(p1, 'PFS.TIME', 'PFS.STATUS', coxdfp)
                 coxdfp['PFS.STATUS'] = status
-                coxdfp['PFS.TIME'] = time 
-                survp = runcph(coxdfp, 'PFS.TIME', 'PFS.STATUS')
-                repOut.loc[k+1,'pfs_survival'] = survp.summary['z'].tolist()[0]   
+                coxdfp['PFS.TIME'] = time
+                survp = runcph(coxdfp.dropna(), 'PFS.TIME', 'PFS.STATUS')
+                repOut.loc[k+1,'pfs_survival'] = survp.summary['z'].tolist()[0]
                 repOut.loc[k+1,'pfs_survival_p'] = survp.summary['p'].tolist()[0]
                 # Run if there is also age information
                 if isincluded(p1, 'AGE'):
                     coxdfp['AGE'] = p1['AGE']
-                    survAp = runcph(coxdfp, 'PFS.TIME', 'PFS.STATUS')
+                    survAp = runcph(coxdfp.dropna(), 'PFS.TIME', 'PFS.STATUS')
                     repOut.loc[k+1,'pfs_survival_age'] = survAp.summary['z'].tolist()[0]
                     repOut.loc[k+1,'pfs_survival_age_p'] = survAp.summary['p'].tolist()[0]
                     # Run if there is also sex information
-                    if isincluded(p1, 'SEX'):
+                    if isincluded(p1, 'SEX') and not all(p1['SEX'] == p1['SEX'][0]):
                         coxdfp['SEX'] = pd.get_dummies(p1['SEX'])['M'] # Male is 1 and female is 0
-                        survASp = runcph(coxdfp, 'PFS.TIME', 'PFS.STATUS')
+                        survASp = runcph(coxdfp.dropna(), 'PFS.TIME', 'PFS.STATUS')
                         repOut.loc[k+1,'pfs_survival_age_sex'] = survASp.summary['z'].tolist()[0]
                         repOut.loc[k+1,'pfs_survival_age_sex_p'] = survASp.summary['p'].tolist()[0]
         end_surv = t1.time()
         print('  SURV_time',end_surv-start_surv)
         #####################################################################################################
         ###
-        ### Replicate TFs 
-        ### 
+        ### Replicate TFs
+        ###
         #####################################################################################################
         start_tf1 = t1.time()
-        if k+1 in sigintfs.index.values: 
+        if k+1 in sigintfs.index.values:
             reptflist = []
             failtflist = []
             tcgareptfs = list(set([int(i) for i in uassaytfs[k+1]]).intersection(df2.columns))
@@ -293,17 +297,16 @@ for k in range(0, iters):
                     repOut.loc[k+1,'Replicated TFs'] = repOut['Replicated TFs'][k+1] + ' ' + str(tcgareptfs[i]) + ':' + str(coef) + ':' + str(pval)
                     #reptflist.append(tcgareptfs[i])
                 else:
-                    repOut.loc[k+1,'Failed TFs'] = repOut['Failed TFs'][k+1] + ' ' + str(tcgareptfs[i]) + ':' + str(coef) + ':' + str(pval)   
+                    repOut.loc[k+1,'Failed TFs'] = repOut['Failed TFs'][k+1] + ' ' + str(tcgareptfs[i]) + ':' + str(coef) + ':' + str(pval)
                     #failtflist.append(tcgareptfs[i])
             #
-            repOut.loc[k+1,'Replicated TFs'] = repOut['Replicated TFs'][k+1][1:]    
+            repOut.loc[k+1,'Replicated TFs'] = repOut['Replicated TFs'][k+1][1:]
             repOut.loc[k+1,'Failed TFs'] = repOut['Failed TFs'][k+1][1:]
         end_tf1 = t1.time()
         print('  TF_time',end_tf1-start_tf1)
     #
     end1 = t1.time()
     print('Bicluster #',k+1,': ',end1-start1)
-
 
 #####################################################################################################
 ###
@@ -321,18 +324,33 @@ bicperRepl = sum([repOut['overlap_rows'][i] / repOut['n_rows'][i] for i in np.ar
 
 if isincluded(p1, 'OS.STATUS') and isincluded(p1, 'OS.TIME'):
     perosurR = sum([repOut['os_survival_p'].dropna()[i] < .05 for i in repOut['os_survival'].dropna().index.values])/len(repOut['os_survival'].dropna())
-    perosurAR = sum([repOut['os_survival_age_p'].dropna()[i] < .05 for i in repOut['os_survival_age'].dropna().index.values])/len(repOut['os_survival_age'].dropna())
-    perosurASR = sum([repOut['os_survival_age_sex_p'].dropna()[i] < .05 for i in repOut['os_survival_age_sex'].dropna().index.values])/len(repOut['os_survival_age_sex'].dropna())
+    if isincluded(p1, 'AGE'):
+        perosurAR = sum([repOut['os_survival_age_p'].dropna()[i] < .05 for i in repOut['os_survival_age'].dropna().index.values])/len(repOut['os_survival_age'].dropna())
+        if isincluded(p1, 'SEX')and not all(p1['SEX'] == p1['SEX'][0]):
+            perosurASR = sum([repOut['os_survival_age_sex_p'].dropna()[i] < .05 for i in repOut['os_survival_age_sex'].dropna().index.values])/len(repOut['os_survival_age_sex'].dropna())
+        else:
+            perosurASR = 'no os survival'
+    else:
+        perosurAR = 'no os survival'
+        perosurASR = 'no os survival'
 else:
     perosurR = 'no os survival'
     perosurAR = 'no os survival'
     perosurASR = 'no os survival'
 
 
+
 if isincluded(p1, 'PFS.STATUS') and isincluded(p1, 'PFS.TIME'):
     perpsurR = sum([repOut['pfs_survival_p'].dropna()[i] < .05 for i in repOut['pfs_survival'].dropna().index.values])/len(repOut['pfs_survival'].dropna())
-    perpsurAR = sum([repOut['pfs_survival_age_p'].dropna()[i] < .05 for i in repOut['pfs_survival_age'].dropna().index.values])/len(repOut['pfs_survival_age'].dropna())
-    perpsurASR = sum([repOut['pfs_survival_age_sex_p'].dropna()[i] < .05 for i in repOut['pfs_survival_age_sex'].dropna().index.values])/len(repOut['pfs_survival_age_sex'].dropna())
+    if isincluded(p1, 'AGE'):
+        perpsurAR = sum([repOut['pfs_survival_age_p'].dropna()[i] < .05 for i in repOut['pfs_survival_age'].dropna().index.values])/len(repOut['pfs_survival_age'].dropna())
+        if isincluded(p1, 'SEX')and not all(p1['SEX'] == p1['SEX'][0]):
+            perpsurASR = sum([repOut['pfs_survival_age_sex_p'].dropna()[i] < .05 for i in repOut['pfs_survival_age_sex'].dropna().index.values])/len(repOut['pfs_survival_age_sex'].dropna())
+        else:
+            perpsurASR = 'no pfs survival'
+    else:
+        perpsurAR = 'no pfs survival'
+        perpsurASR = 'no pfs survival'
 else:
     perpsurR = 'no pfs survival'
     perpsurAR = 'no pfs survival'
@@ -340,20 +358,15 @@ else:
 
 
 perReplicatedBics = sum([repOut['pc1_perm_p'].dropna()[i] < 0.05 for i in repOut['pc1_perm_p'].dropna().index.values])/len(repOut['pc1_perm_p'].dropna())
-
-
-if list(set([i for j in repOut['Failed TFs'].dropna().apply(lambda x: str(x).split(sep = ' ')) for i in j]))[0] == '':
-    Umissingtfs = list(set([i for j in repOut['Failed TFs'].dropna().apply(lambda x: str(x).split(sep = ' ')) for i in j]))[1:]
-else:
-    Umissingtfs = list(set([i for j in repOut['Failed TFs'].dropna().apply(lambda x: str(x).split(sep = ' ')) for i in j]))
+Umissingtfs = list(set([i for j in repOut['Failed TFs'].dropna().apply(lambda x: str(x).split(' ')) for i in j]))
 
 numUmissingtfs = len(Umissingtfs)
 
 av_pearsonP = sum(P)/len(P)
 av_pearsonC = sum(C)/len([C])
-numbicsreptf = len(list(set([i for i in repOut['Replicated TFs'].dropna().apply(lambda x: x.split(sep = ':')[0])]))[1:])
+numbicsreptf = len(list(set([i for i in repOut['Replicated TFs'].dropna().apply(lambda x: x.split(':')[0])]))[1:])
 
-pstats = pd.Series([num0bics, num1gbics, num2gbics, numsmallbics, bicperRepl, perReplicatedBics, perosurR, perosurAR, perosurASR, perpsurR, perpsurAR, perpsurASR, numUmissingtfs, numbicsreptf] ) 
+pstats = pd.Series([num0bics, num1gbics, num2gbics, numsmallbics, bicperRepl, perReplicatedBics, perosurR, perosurAR, perosurASR, perpsurR, perpsurAR, perpsurASR, numUmissingtfs, numbicsreptf] )
 
 pstats.index=['number of bics with 0 genes', 'number of bics with 1 gene or less', 'number of bics with 2 genes or less', 'number of bics with 3 genes or less', 'percent of genes per bic in replication set (excludes bics with 1 or fewer genes in replication set)', 'Percent of Bics that replicate', 'Percent of bics with replicating os', 'Percent of bics with replicating os with age', 'Percent of bics with replicating survival with age and sex', 'Percent of bics replicating pfs', 'Percent of bics replicating pfs with age', 'Percent of bics replicating pfs with age and sex', 'number of tfs missing in replication dataset', 'number of bics with a replicated tf']
 #####################################################################################################
@@ -366,4 +379,3 @@ pstats.index=['number of bics with 0 genes', 'number of bics with 1 gene or less
 repOut=repOut.replace(['', np.nan], 'NA')
 pstats.to_csv('output/repStats/repStats_' + args.name + '_' + args.postproc + '.csv')
 repOut.to_csv('output/repOut/repOut_' + args.name + '_' + args.postproc + '.csv')
-
