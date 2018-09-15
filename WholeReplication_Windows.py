@@ -18,22 +18,26 @@ def RDProc(a):
     RDPproc = Popen(' '.join(a), stdout=logFile, stderr=STDOUT, shell = True)
     output = RDPproc.communicate()
 
-runMe = []
-for key in SetsnTCGA.keys():
-    if key != 'READ/COAD':
-        for name in SetsnTCGA[key]:
-            for postproc in pPnTCGA[key]:
-                if not os.path.exists('output/repOut/repOut_' + name + '_' + postproc + '.csv'):
-                    runMe.append(['./RDP_Main.py --name',name,'--postproc',postproc])
+def main():
+    runMe = []
+    for key in SetsnTCGA.keys():
+        if key != 'READ/COAD':
+            for name in SetsnTCGA[key]:
+                for postproc in pPnTCGA[key]:
+                    if not os.path.exists('output/repOut/repOut_' + name + '_' + postproc + '.csv'):
+                        runMe.append(['python RDP_Main.py --name',name,'--postproc',postproc])
 
-cpus = 4
-# cpus = cpu_count()
-print('There are %d CPUs available.' % cpus)
-pool = Pool(processes=cpus)
-pool.map(RDProc, runMe)
-pool.close()
-pool.join()
+    cpus = 3
+    # cpus = cpu_count()
+    print('There are %d CPUs available.' % cpus)
+    pool = Pool(processes=cpus)
+    pool.map(RDProc, runMe)
+    pool.close()
+    pool.join()
 
 #for a in runMe:
 #    RDProc(a)
+
+if __name__ == "__main__":
+    main()
 
